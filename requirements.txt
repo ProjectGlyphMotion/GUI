@@ -1,0 +1,8 @@
+tkinterdnd2
+Pillow
+opencv-python
+ultralytics
+torch
+tqdm
+psutil
+GPUtil
