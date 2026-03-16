@@ -50,7 +50,14 @@ DEFAULT_ALLOWED_CLASSES = [
     "microwave", "refrigerator", "book", "clock", "vase", "scissors"
 ]
 DEFAULT_CONFIDENCE_THRESHOLD = 0.25
-MAX_RAM_USAGE_PERCENT = 80.0
+MAX_RAM_USAGE_PERCENT = 85.0
+
+# Watermark Configuration
+ENABLE_WATERMARK = True
+WATERMARK_TEXT = "Processed by projectglyphmotion.studio"
+WATERMARK_SCALE_FACTOR = 1.0  # Base scale
+WATERMARK_THICKNESS = 1
+WATERMARK_MARGIN_FRACTION = 0.02
 
 # User Configuration 
 USE_GPU_IN_SCRIPT = True 
@@ -119,7 +126,7 @@ def process_audio_ffmpeg(video_source_path, temp_silent_video_abs_path, final_ou
 
 
 class YOLOv8Tracker:
-    def __init__(self, model_path=DEFAULT_MODEL_PATH, allowed_classes=None, confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD, box_color=(0, 255, 0)):
+    def __init__(self, model_path=DEFAULT_MODEL_PATH, allowed_classes=None, confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD, box_color=(0, 255, 0), roi_bbox=None, enable_watermark=True):
         print("--- FFMPEG Check ---"); check_ffmpeg(); print("--------------------")
         if PSUTIL_AVAILABLE: print("[DEBUG] Priming psutil.cpu_percent()..."); psutil.cpu_percent()
         if GPUTIL_AVAILABLE:
@@ -130,6 +137,8 @@ class YOLOv8Tracker:
         self.allowed_classes = allowed_classes if allowed_classes is not None else DEFAULT_ALLOWED_CLASSES
         self.confidence_threshold = confidence_threshold
         self.box_color = tuple(box_color)
+        self.roi_bbox = roi_bbox  # (x, y, w, h) or None
+        self.enable_watermark = enable_watermark and ENABLE_WATERMARK
 
         self.device = "cpu"
         if USE_GPU_IN_SCRIPT and torch.cuda.is_available():
@@ -178,13 +187,28 @@ class YOLOv8Tracker:
         # Make a copy of the frame for annotation to avoid modifying the original
         annotated_frame = frame.copy()
 
-        # Run tracking on the frame
+        # ROI pre-processing: crop the inference region if ROI is set
+        inference_frame = frame
+        offset_x, offset_y = 0, 0
+
+        if self.roi_bbox is not None:
+            rx, ry, rw, rh = self.roi_bbox
+            frame_h, frame_w = frame.shape[:2]
+            # Bounds checking
+            rx = max(0, min(rx, frame_w))
+            ry = max(0, min(ry, frame_h))
+            rw = max(1, min(rw, frame_w - rx))
+            rh = max(1, min(rh, frame_h - ry))
+            inference_frame = frame[ry:ry+rh, rx:rx+rw]
+            offset_x, offset_y = rx, ry
+
+        # Run tracking on the (possibly cropped) frame
         # persist=True allows the tracker to maintain object identities across frames
-        results = self.model.track(frame, persist=True, verbose=False, conf=self.confidence_threshold)
+        results = self.model.track(inference_frame, persist=True, verbose=False, conf=self.confidence_threshold)
 
         if results and results[0].boxes:
             for box in results[0].boxes:
-                # Ensure box.id exists for tracking results
+
                 if box.id is None:
                     continue
 
@@ -196,6 +220,12 @@ class YOLOv8Tracker:
                 if class_name in self.allowed_classes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     conf = box.conf[0]
+
+                    # ROI coordinate adjustment:
+                    x1 += offset_x
+                    x2 += offset_x
+                    y1 += offset_y
+                    y2 += offset_y
 
                     # Convert box_color (RGB) to BGR for OpenCV drawing
                     bgr_color = self.box_color[::-1]
@@ -213,9 +243,21 @@ class YOLOv8Tracker:
                     # Draw label text
                     cv2.putText(annotated_frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
-        return frame, annotated_frame # Return both original and annotated
+        # OpenCV Watermarking
+        if self.enable_watermark:
+            h, w = annotated_frame.shape[:2]
+            font_scale = min(w, h) / 1000.0 * 0.8
+            thickness = max(1, int(font_scale * 1.5))
+            (text_w, text_h), baseline = cv2.getTextSize(WATERMARK_TEXT, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+            margin_x = int(w * WATERMARK_MARGIN_FRACTION)
+            margin_y = int(h * WATERMARK_MARGIN_FRACTION)
+            x_pos = w - text_w - margin_x
+            y_pos = h - margin_y
+            cv2.putText(annotated_frame, WATERMARK_TEXT, (x_pos+1, y_pos+1), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0,0,0), thickness+1, cv2.LINE_AA)
+            cv2.putText(annotated_frame, WATERMARK_TEXT, (x_pos, y_pos), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255,255,255), thickness, cv2.LINE_AA)
 
-# This block will only run if ot.py is executed directly, not when imported
+        return frame, annotated_frame
+
 if __name__ == "__main__":
     print("This script is now primarily designed to be imported as a module for GUI integration.")
     print("If you run it directly, it will only initialize the tracker. It will not process videos.")
