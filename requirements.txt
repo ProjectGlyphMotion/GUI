@@ -6,3 +6,4 @@ torch
 tqdm
 psutil
 GPUtil
+tkinterdnd2
