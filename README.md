@@ -16,6 +16,11 @@ This project is a fully-featured GUI application for real-time object detection 
 - 🧠 **Automatic CUDA Detection and Usage (if available)**
 - 📁 **Auto-Saved Output in Timestamped Folders**
 
+## ✨ What's New
+- 👀 **Updated UI:** Totally inspired by our website aesthetics.
+- 🔲 **Interactive Region of Interest (ROI):** Draw a custom bounding box on the first frame of your video to restrict YOLOv8 tracking to a specific area. This dramatically reduces processing overhead and focuses your results.
+- 📱 **Portrait Video Correction:** Automatically detects video rotation metadata and rotates mobile portrait videos to their correct orientation before processing.
+
 ---
 
 ## 🛠️ Setup
@@ -30,6 +35,9 @@ git clone https://github.com/ProjectGlyphMotion/GUI && cd GUI
 
 ```bash
 pip install -r requirements.txt
+```
+```bash
+sudo apt install python3-pil.imagetk
 ```
 
 > Ensure **FFmpeg** is installed and accessible from the command line.
@@ -50,9 +58,15 @@ python3 GUI.py
 
 1. Browse or drag a `.mp4`, `.avi`, or `.mov` file.
 2. Select the desired bounding box color (RGB or via color picker).
-3. Click **▶ Run Tracker**.
-4. Processed video will be saved in the `output/YYYYMMDD-HHMMSS/` directory.
+3. Optionally you can also use the Region of Interest (ROI)
+4. Click **▶ Run Tracker**.
+---
 
+## 👀 Preview 
+
+![GUI Preview](assets/preview.gif)
+
+- Note: This looks kinda distorted because of the conversion.
 ---
 
 ## 📂 Output
@@ -63,7 +77,7 @@ python3 GUI.py
 
 ---
 
-## ✅ [Example](https://drive.google.com/file/d/1kV9-v5E5T7AiDEnNQWlmznmK0GhN4JMc/view) Result
+## ✅ [Example](https://drive.google.com/file/d/1LvyAFXvXy03LXBlhp-yG3kaQcWL1nHmM/view) Result
 
 ---
 
