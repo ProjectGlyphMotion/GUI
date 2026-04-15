@@ -359,6 +359,11 @@ class App:
             return
 
         cap = cv2.VideoCapture(self.video_path.get())
+        # Disable OpenCV auto-rotation so we can handle it manually
+        try:
+            cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)
+        except Exception:
+            pass
         if not cap.isOpened():
             messagebox.showerror("Error", "Could not open video file.")
             return
@@ -635,6 +640,11 @@ class App:
         """Reads video, processes frames, and puts them into queues."""
         video_path = self.video_path.get()
         self.cap = cv2.VideoCapture(video_path)
+        # Disable OpenCV auto-rotation so we handle it manually via CAP_PROP_ORIENTATION_META
+        try:
+            self.cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 0)
+        except Exception:
+            pass
 
         if not self.cap.isOpened():
             self.output_queue.put(f"❌ [ERROR] Could not open video file: {video_path}")
