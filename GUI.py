@@ -625,8 +625,11 @@ class App:
             else:
                 self.output_queue.put("[INFO] Video processing thread successfully joined.")
 
-        if self.cap:
-            self.cap.release()
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
             self.cap = None
 
         self.tracker_running = False
@@ -732,8 +735,28 @@ class App:
             frame_count += 1
             self.root.after(0, lambda fc=frame_count: self.progress.config(value=fc))
 
-        self.cap.release()
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
         out.release()
+
+        # If user clicked Stop, clean up and skip saving
+        if self.stop_event.is_set():
+            self.output_queue.put("[INFO] Tracking cancelled by user. Cleaning up...")
+            try:
+                if os.path.exists(temp_silent_video_path):
+                    os.remove(temp_silent_video_path)
+                if os.path.exists(output_dir) and not os.listdir(output_dir):
+                    os.rmdir(output_dir)
+            except Exception as e:
+                self.output_queue.put(f"[WARNING] Cleanup error: {e}")
+            self.output_queue.put("[INFO] Tracking cancelled. No files saved.")
+            self.root.after(100, self.stop_tracker)
+            return
+
         self.output_queue.put("[INFO] Video processing loop finished.")
 
         if FFMPEG_AVAILABLE_GLOBAL:
