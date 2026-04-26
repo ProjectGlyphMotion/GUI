@@ -36,15 +36,35 @@ git clone https://github.com/ProjectGlyphMotion/GUI && cd GUI
 ```bash
 pip install -r requirements.txt
 ```
+
+On Linux, you may also need:
 ```bash
 sudo apt install python3-pil.imagetk
 ```
 
 > Ensure **FFmpeg** is installed and accessible from the command line.
 
-> If you want GPU acceleration, install NVIDIA [CUDA](https://developer.nvidia.com/cuda-downloads) and the appropriate drivers.
+### 🎮 GPU Acceleration (Optional but Recommended)
 
-> Cuda can be a pain in the 🍑HOLE if you have a 30 or 40 series card, here is a [FIX](https://www.reddit.com/r/StableDiffusion/comments/13n16r7/cuda_not_available_fix_for_anybody_that_is/)
+By default, `pip install torch` installs the **CPU-only** version. The app will still work on CPU, but tracking will be significantly slower.
+
+To enable GPU acceleration, install **PyTorch with CUDA** from the [official PyTorch site](https://pytorch.org/get-started/locally/) based on your setup:
+
+| CUDA Version | Install Command |
+|---|---|
+| CUDA 11.8 | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118` |
+| CUDA 12.1 | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121` |
+| CUDA 12.4 | `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124` |
+| CPU Only | `pip install torch torchvision` (default) |
+
+> **Not sure which CUDA version you have?** Run `nvcc --version` or `nvidia-smi` in your terminal.
+
+> ⚠️ CUDA can be a pain in the 🍑 if you have a 30 or 40 series card — here is a [FIX](https://www.reddit.com/r/StableDiffusion/comments/13n16r7/cuda_not_available_fix_for_anybody_that_is/)
+
+**Verify GPU is detected:**
+```bash
+python -c "import torch; print(torch.cuda.is_available())"
+```
 
 ---
 

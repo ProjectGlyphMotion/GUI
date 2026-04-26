@@ -1,9 +1,8 @@
-tkinterdnd2
-Pillow
-opencv-python
-ultralytics
-torch
-tqdm
-psutil
-GPUtil
-tkinterdnd2
+tkinterdnd2>=0.4.2
+Pillow>=10.0.0
+opencv-python>=4.8.0
+ultralytics>=8.0.0
+torch>=2.0.0
+tqdm>=4.65.0
+psutil>=5.9.0
+GPUtil>=1.4.0
