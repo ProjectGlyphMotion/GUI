@@ -269,6 +269,9 @@ class App:
         self.roi_clear_button.pack(side="left", ipady=2)
         self.roi_clear_button.config(state=tk.DISABLED)
 
+        self.gallery_button = self._make_button(button_frame, "📁  Processed Videos", self.open_processed_videos, accent=False)
+        self.gallery_button.pack(side="left", padx=(10, 0), ipady=2)
+
         self.roi_status_label = tk.Label(button_frame, text="",
             fg=COL_TEXT_SEC, bg=COL_BG, font=FONT_SMALL)
         self.roi_status_label.pack(side="left", padx=(10, 0))
@@ -494,6 +497,253 @@ class App:
         self.roi_status_label.config(text="", fg=COL_TEXT_SEC)
         self.roi_clear_button.config(state=tk.DISABLED)
         self.output_queue.put("[INFO] ROI cleared. Will process full frame.")
+
+    def open_processed_videos(self):
+        """Open a new window showing all processed videos from the output directory."""
+        parent_dir = os.path.dirname(os.path.abspath(__file__))
+        output_base_dir = os.path.join(parent_dir, "output")
+
+        # Build Toplevel window
+        gallery_win = tk.Toplevel(self.root)
+        gallery_win.title("Processed Videos — Project GlyphMotion")
+        gallery_win.geometry("820x620")
+        gallery_win.configure(bg=COL_BG)
+        gallery_win.resizable(True, True)
+        gallery_win.minsize(600, 400)
+        try:
+            gallery_win.iconbitmap(icon_path)
+        except Exception:
+            pass
+
+        # Header bar
+        header_bar = tk.Frame(gallery_win, bg=COL_SURFACE)
+        header_bar.pack(fill="x")
+
+        header_inner = tk.Frame(header_bar, bg=COL_SURFACE)
+        header_inner.pack(fill="x", padx=20, pady=(12, 10))
+
+        # Left: icon + title + subtitle inline
+        left_header = tk.Frame(header_inner, bg=COL_SURFACE)
+        left_header.pack(side="left", fill="x", expand=True)
+
+        title_row = tk.Frame(left_header, bg=COL_SURFACE)
+        title_row.pack(anchor="w")
+
+        tk.Label(title_row, text="📁", fg=COL_TEXT, bg=COL_SURFACE,
+            font=("Segoe UI", 14)).pack(side="left", padx=(0, 6))
+        tk.Label(title_row, text="Processed Videos",
+            fg=COL_ACCENT, bg=COL_SURFACE, font=("Segoe UI", 16, "bold")).pack(side="left")
+        tk.Label(title_row, text="Browse and play your previously processed tracking outputs",
+            fg=COL_TEXT_DIM, bg=COL_SURFACE, font=("Segoe UI", 9)).pack(side="left", padx=(12, 0))
+
+        # Right: refresh button
+        refresh_btn = tk.Button(header_inner, text="🔄  Refresh", command=lambda: populate(),
+            font=FONT_BUTTON, fg=COL_TEXT, bg=COL_INPUT,
+            activeforeground=COL_TEXT, activebackground="#252525",
+            relief=tk.FLAT, bd=0, cursor="hand2", padx=14, pady=5)
+        refresh_btn.pack(side="right")
+
+        # Accent line under header
+        tk.Frame(gallery_win, bg=COL_ACCENT_DARK, height=1).pack(fill="x")
+
+        # Scrollable content area
+        content_frame = tk.Frame(gallery_win, bg=COL_BG)
+        content_frame.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(content_frame, bg=COL_BG, highlightthickness=0, bd=0)
+        scrollbar = tk.Scrollbar(content_frame, orient="vertical", command=canvas.yview,
+            bg=COL_INPUT, troughcolor=COL_SURFACE, activebackground=COL_ACCENT,
+            width=10)
+        scroll_frame = tk.Frame(canvas, bg=COL_BG)
+
+        scroll_frame.bind("<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        canvas_window = canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Keep scroll_frame width in sync with canvas
+        def _on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Mousewheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        gallery_win.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>"))
+
+        # Thumbnail cache 
+        gallery_win._thumb_cache = []
+
+        def _get_thumbnail(video_path, size=(160, 90)):
+            """Extract the first frame of a video as a PhotoImage thumbnail."""
+            try:
+                cap = cv2.VideoCapture(video_path)
+                ret, frame = cap.read()
+                cap.release()
+                if ret and frame is not None:
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    pil_img = Image.fromarray(frame_rgb)
+                    pil_img.thumbnail(size, Image.LANCZOS)
+                    photo = ImageTk.PhotoImage(pil_img)
+                    gallery_win._thumb_cache.append(photo)
+                    return photo
+            except Exception:
+                pass
+            return None
+
+        def populate():
+            """Scan the output directory and populate the list."""
+            for widget in scroll_frame.winfo_children():
+                widget.destroy()
+            gallery_win._thumb_cache.clear()
+
+            if not os.path.isdir(output_base_dir):
+                _show_empty("No output directory found.\nProcess a video first to create one.")
+                return
+
+            video_entries = []
+            for folder_name in sorted(os.listdir(output_base_dir), reverse=True):
+                folder_path = os.path.join(output_base_dir, folder_name)
+                if not os.path.isdir(folder_path):
+                    continue
+                for file_name in os.listdir(folder_path):
+                    if file_name.lower().endswith((".mp4", ".avi", ".mov")):
+                        full_path = os.path.join(folder_path, file_name)
+                        video_entries.append((folder_name, file_name, full_path))
+
+            if not video_entries:
+                _show_empty("No processed videos yet.\nStart tracking one!")
+                return
+
+            for idx, (folder_name, file_name, full_path) in enumerate(video_entries):
+                # Card container
+                card_outer = tk.Frame(scroll_frame, bg=COL_BORDER)
+                card_outer.pack(fill="x", padx=16, pady=(10 if idx == 0 else 0, 8))
+
+                card = tk.Frame(card_outer, bg=COL_CARD)
+                card.pack(fill="x", padx=1, pady=1)
+
+                card_content = tk.Frame(card, bg=COL_CARD)
+                card_content.pack(fill="x", padx=14, pady=10)
+
+                # Left: thumbnail
+                thumb_frame = tk.Frame(card_content, bg="#0a0a0a", width=160, height=90,
+                    highlightthickness=1, highlightbackground="#333333")
+                thumb_frame.pack(side="left", padx=(0, 14))
+                thumb_frame.pack_propagate(False)
+
+                thumb_photo = _get_thumbnail(full_path)
+                if thumb_photo:
+                    thumb_label = tk.Label(thumb_frame, image=thumb_photo, bg="#0a0a0a", cursor="hand2")
+                    thumb_label.pack(expand=True)
+                    thumb_label.bind("<Button-1>", lambda e, p=full_path: self._play_video(p))
+                else:
+                    tk.Label(thumb_frame, text="🎬", fg=COL_TEXT_DIM, bg="#0a0a0a",
+                        font=("Segoe UI", 20)).pack(expand=True)
+
+                # Right: info + buttons
+                info_col = tk.Frame(card_content, bg=COL_CARD)
+                info_col.pack(side="left", fill="both", expand=True)
+
+                # File name
+                tk.Label(info_col, text=f"📹  {file_name}",
+                    fg=COL_TEXT, bg=COL_CARD, font=FONT_HEADING,
+                    anchor="w").pack(anchor="w")
+
+                # Metadata: date + size
+                try:
+                    size_bytes = os.path.getsize(full_path)
+                    if size_bytes >= 1_073_741_824:
+                        size_str = f"{size_bytes / 1_073_741_824:.2f} GB"
+                    elif size_bytes >= 1_048_576:
+                        size_str = f"{size_bytes / 1_048_576:.1f} MB"
+                    elif size_bytes >= 1024:
+                        size_str = f"{size_bytes / 1024:.1f} KB"
+                    else:
+                        size_str = f"{size_bytes} B"
+                except Exception:
+                    size_str = "Unknown"
+
+                try:
+                    date_str = time.strftime("%b %d, %Y  %H:%M:%S",
+                        time.strptime(folder_name, "%Y%m%d-%H%M%S"))
+                except Exception:
+                    date_str = folder_name
+
+                meta_frame = tk.Frame(info_col, bg=COL_CARD)
+                meta_frame.pack(anchor="w", pady=(3, 0))
+                tk.Label(meta_frame, text=f"📅 {date_str}",
+                    fg=COL_TEXT_DIM, bg=COL_CARD, font=FONT_SMALL).pack(side="left", padx=(0, 14))
+                tk.Label(meta_frame, text=f"💾 {size_str}",
+                    fg=COL_TEXT_DIM, bg=COL_CARD, font=FONT_SMALL).pack(side="left")
+
+                # Action buttons row
+                btn_frame = tk.Frame(info_col, bg=COL_CARD)
+                btn_frame.pack(anchor="w", pady=(8, 0))
+
+                play_btn = tk.Button(btn_frame, text="▶  Play",
+                    command=lambda p=full_path: self._play_video(p),
+                    font=FONT_BUTTON, fg="#000000", bg=COL_ACCENT,
+                    activeforeground="#000000", activebackground=COL_ACCENT_DARK,
+                    relief=tk.FLAT, bd=0, cursor="hand2", padx=12, pady=3)
+                play_btn.pack(side="left", padx=(0, 6))
+
+                folder_btn = tk.Button(btn_frame, text="📂  Open Folder",
+                    command=lambda p=full_path: os.startfile(os.path.dirname(p)),
+                    font=FONT_BUTTON, fg=COL_TEXT, bg=COL_INPUT,
+                    activeforeground=COL_TEXT, activebackground="#252525",
+                    relief=tk.FLAT, bd=0, cursor="hand2", padx=12, pady=3)
+                folder_btn.pack(side="left", padx=(0, 6))
+
+                del_btn = tk.Button(btn_frame, text="🗑  Delete",
+                    command=lambda p=full_path, co=card_outer: self._delete_video(p, co, populate),
+                    font=FONT_BUTTON, fg="#ffffff", bg=COL_DANGER,
+                    activeforeground="#ffffff", activebackground=COL_DANGER_DARK,
+                    relief=tk.FLAT, bd=0, cursor="hand2", padx=12, pady=3)
+                del_btn.pack(side="left")
+
+            # Footer count
+            count_text = f"{len(video_entries)} processed video{'s' if len(video_entries) != 1 else ''} found"
+            tk.Label(scroll_frame, text=count_text,
+                fg=COL_ACCENT, bg=COL_BG, font=FONT_SMALL).pack(anchor="w", padx=16, pady=(4, 14))
+
+        def _show_empty(msg):
+            """Display centered empty-state message."""
+            empty_frame = tk.Frame(scroll_frame, bg=COL_BG)
+            empty_frame.pack(fill="both", expand=True, pady=60)
+            tk.Label(empty_frame, text="📹", fg=COL_TEXT_DIM, bg=COL_BG,
+                font=("Segoe UI", 36)).pack()
+            tk.Label(empty_frame, text=msg, fg=COL_TEXT_DIM, bg=COL_BG,
+                font=FONT_LABEL, justify="center").pack(pady=(8, 0))
+
+        populate()
+
+    def _play_video(self, video_path):
+        """Play a video using the system's default video player."""
+        try:
+            os.startfile(video_path)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not play video:\n{e}")
+
+    def _delete_video(self, video_path, card_widget, refresh_callback):
+        """Delete a processed video file after confirmation."""
+        if not messagebox.askyesno("Confirm Delete",
+                f"Are you sure you want to delete:\n{os.path.basename(video_path)}?\n\nThis cannot be undone."):
+            return
+        try:
+            os.remove(video_path)
+            parent_folder = os.path.dirname(video_path)
+            if os.path.isdir(parent_folder) and not os.listdir(parent_folder):
+                os.rmdir(parent_folder)
+            self.output_queue.put(f"[INFO] Deleted: {os.path.basename(video_path)}")
+            refresh_callback()
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not delete video:\n{e}")
 
     def on_drop(self, event):
         file_path = event.data.strip('{}')
